@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tesorería Web</title>
+  <!-- jsPDF + autoTable -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f3f4f6;
+      margin: 0;
+      padding: 30px;
+      color: #374151;
+    }
+
+    h1 {
+      text-align: center;
+      color: #1d4ed8;
+      font-size: 2.2rem;
+      margin-bottom: 30px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 25px;
+      background: white;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    th, td {
+      padding: 14px 10px;
+      text-align: center;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    th {
+      background-color: #f1f5f9;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    tr:hover {
+      background-color: #f9fafb;
+    }
+
+    .form-container {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 15px;
+      margin-top: 20px;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+
+    .form-container input,
+    .form-container select {
+      padding: 10px;
+      width: 180px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: box-shadow 0.2s ease;
+    }
+
+    .form-container input:focus,
+    .form-container select:focus {
+      outline: none;
+      box-shadow: 0 0 0 3px #93c5fd;
+      border-color: #2563eb;
+    }
+
+    .btn {
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      padding: 10px 22px;
+      cursor: pointer;
+      font-weight: bold;
+      border-radius: 6px;
+      font-size: 1rem;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+    }
+
+    .btn:hover {
+      background-color: #1e40af;
+      transform: scale(1.03);
+    }
+
+    #resumen {
+      margin-top: 25px;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.1rem;
+      color: #111827;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>TESORERÍA</h1>
+
+  <div class="form-container">
+    <input type="number" id="monto" placeholder="Monto" />
+    <input type="date" id="fecha" />
+    <input type="text" id="descripcion" placeholder="Descripción" />
+    <select id="tipo">
+      <option value="">Tipo</option>
+      <option value="INGRESO">INGRESO</option>
+      <option value="EGRESO">EGRESO</option>
+    </select>
+    <input type="file" id="archivo" accept=".csv" />
+    <button class="btn" onclick="insertar()">Insertar</button>
+    <button class="btn" onclick="exportarCSV()">Exportar CSV</button>
+    <button class="btn" onclick="importarCSV()">Importar CSV</button>
+    <button class="btn" onclick="exportarPDF()">Exportar PDF</button>
+  </div>
+
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Descripción</th>
+        <th>Monto</th>
+        <th>Tipo</th>
+        <th>Acción</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div id="resumen"></div>
+
+  <script>
+    const tabla = document.querySelector("#tabla tbody");
+
+    function cargarDatos() {
+      const datos = JSON.parse(localStorage.getItem("tesoreria")) || [];
+      tabla.innerHTML = "";
+
+      let totalIngresos = 0;
+      let totalEgresos = 0;
+
+      datos.forEach((fila, index) => {
+        const tr = document.createElement("tr");
+
+        fila.forEach(d => {
+          const td = document.createElement("td");
+          td.textContent = d;
+          tr.appendChild(td);
+        });
+
+        const monto = parseFloat(fila[2]);
+        if (fila[3] === "INGRESO") totalIngresos += monto;
+        else if (fila[3] === "EGRESO") totalEgresos += monto;
+
+        const tdEliminar = document.createElement("td");
+        const btnEliminar = document.createElement("button");
+        btnEliminar.textContent = "❌";
+        btnEliminar.className = "btn";
+        btnEliminar.style.padding = "5px 12px";
+        btnEliminar.style.backgroundColor = "#dc2626";
+        btnEliminar.style.fontSize = "0.9rem";
+        btnEliminar.onclick = () => eliminarFila(index);
+        tdEliminar.appendChild(btnEliminar);
+        tr.appendChild(tdEliminar);
+
+        tabla.appendChild(tr);
+      });
+
+      const balance = totalIngresos - totalEgresos;
+      document.getElementById("resumen").innerHTML = `
+        Ingresos: $${totalIngresos.toFixed(2)} |
+        Egresos: $${totalEgresos.toFixed(2)} |
+        Balance: <span style="color:${balance >= 0 ? 'green' : 'red'};">
+        $${balance.toFixed(2)}</span>
+      `;
+    }
+
+    function insertar() {
+      const password = prompt("Ingresá la contraseña para insertar:");
+      if (password !== "TOMAS") {
+        alert("Contraseña incorrecta. Operación cancelada.");
+        return;
+      }
+
+      const monto = parseFloat(document.getElementById("monto").value);
+      const fecha = document.getElementById("fecha").value;
+      const descripcion = document.getElementById("descripcion").value;
+      const tipo = document.getElementById("tipo").value;
+
+      if (!fecha || !descripcion || !tipo || isNaN(monto)) {
+        alert("Todos los campos son obligatorios y el monto debe ser un número.");
+        return;
+      }
+
+      const nuevaFila = [fecha, descripcion, monto.toFixed(2), tipo];
+      const datos = JSON.parse(localStorage.getItem("tesoreria")) || [];
+      datos.push(nuevaFila);
+      localStorage.setItem("tesoreria", JSON.stringify(datos));
+      cargarDatos();
+
+      document.getElementById("monto").value = "";
+      document.getElementById("descripcion").value = "";
+      document.getElementById("tipo").value = "";
+    }
+
+    function eliminarFila(index) {
+      const password = prompt("Ingresá la contraseña para eliminar:");
+      if (password !== "TOMAS") {
+        alert("Contraseña incorrecta. Operación cancelada.");
+        return;
+      }
+
+      const datos = JSON.parse(localStorage.getItem("tesoreria")) || [];
+      datos.splice(index, 1);
+      localStorage.setItem("tesoreria", JSON.stringify(datos));
+      cargarDatos();
+    }
+
+    function exportarCSV() {
+      const datos = JSON.parse(localStorage.getItem("tesoreria")) || [];
+      let csv = "Fecha,Descripción,Monto,Tipo\n";
+      datos.forEach(fila => {
+        csv += fila.join(",") + "\n";
+      });
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "tesoreria.csv";
+      link.click();
+    }
+
+    function importarCSV() {
+      const password = prompt("Ingresá la contraseña para importar:");
+      if (password !== "TOMAS") {
+        alert("Contraseña incorrecta. Operación cancelada.");
+        return;
+      }
+
+      const input = document.getElementById("archivo");
+      const archivo = input.files[0];
+
+      if (!archivo) {
+        alert("Seleccioná un archivo CSV.");
+        return;
+      }
+
+      const lector = new FileReader();
+      lector.onload = function(e) {
+        const contenido = e.target.result;
+        const lineas = contenido.split("\n").map(l => l.trim()).filter(l => l);
+
+        const datosImportados = [];
+        for (let i = 1; i < lineas.length; i++) {
+          const columnas = lineas[i].split(",");
+          if (columnas.length === 4) {
+            datosImportados.push([
+              columnas[0],
+              columnas[1],
+              parseFloat(columnas[2]).toFixed(2),
+              columnas[3]
+            ]);
+          }
+        }
+
+        const datosActuales = JSON.parse(localStorage.getItem("tesoreria")) || [];
+        const combinados = [...datosActuales, ...datosImportados];
+        localStorage.setItem("tesoreria", JSON.stringify(combinados));
+        cargarDatos();
+        input.value = "";
+
+        alert("Datos importados correctamente.");
+      };
+
+      lector.readAsText(archivo);
+    }
+
+    function exportarPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const datos = JSON.parse(localStorage.getItem("tesoreria")) || [];
+
+      const columnas = ["Fecha", "Descripción", "Monto", "Tipo"];
+      const filas = datos.map(f => [f[0], f[1], `$${f[2]}`, f[3]]);
+
+      doc.setFontSize(16);
+      doc.text("Resumen Tesorería", 105, 15, null, null, "center");
+
+      doc.autoTable({
+        startY: 25,
+        head: [columnas],
+        body: filas,
+        theme: 'grid',
+        headStyles: { fillColor: [37, 99, 235] },
+        styles: { halign: 'center' },
+      });
+
+      doc.save("tesoreria.pdf");
+    }
+
+    document.getElementById("fecha").valueAsDate = new Date();
+    cargarDatos();
+  </script>
+
+</body>
+</html>
